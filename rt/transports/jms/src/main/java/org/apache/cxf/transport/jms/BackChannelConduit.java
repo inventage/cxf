@@ -51,14 +51,19 @@ class BackChannelConduit extends AbstractConduit implements JMSExchangeSender {
     private static final Logger LOG = LogUtils.getL7dLogger(BackChannelConduit.class);
     private JMSConfiguration jmsConfig;
     private Message inMessage;
-    private Connection connection;
+    private Connection persistentConnection;
     
     BackChannelConduit(Message inMessage, JMSConfiguration jmsConfig, Connection connection) {
         super(EndpointReferenceUtils.getAnonymousEndpointReference());
         this.inMessage = inMessage;
         this.jmsConfig = jmsConfig;
-        this.connection = connection;
+        this.persistentConnection = connection;
     }
+
+    BackChannelConduit(Message inMessage, JMSConfiguration jmsConfig) {
+        this(inMessage, jmsConfig, null);
+    }
+
     @Override
     public void close(Message msg) throws IOException {
         MessageStreamUtil.closeStreams(msg);
@@ -112,6 +117,14 @@ class BackChannelConduit extends AbstractConduit implements JMSExchangeSender {
         final Message outMessage = exchange.getOutMessage();
 
         try (ResourceCloser closer = new ResourceCloser()) {
+            Connection connection;
+
+            if (persistentConnection == null) {
+                connection = closer.register(JMSFactory.createConnection(jmsConfig));
+            } else {
+                connection = this.persistentConnection;
+            }
+
             Session session = closer
                 .register(connection.createSession(false, Session.AUTO_ACKNOWLEDGE));
 
@@ -174,6 +187,7 @@ class BackChannelConduit extends AbstractConduit implements JMSExchangeSender {
         messageProperties.setJMSDeliveryMode(inMessageProperties.getJMSDeliveryMode());
         messageProperties.setJMSPriority(inMessageProperties.getJMSPriority());
         messageProperties.setSOAPJMSRequestURI(inMessageProperties.getSOAPJMSRequestURI());
+        messageProperties.setSOAPJMSSOAPAction(inMessageProperties.getSOAPJMSSOAPAction());
         messageProperties.setSOAPJMSBindingVersion("1.0");
     }
 
